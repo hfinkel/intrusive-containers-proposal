@@ -1,0 +1,993 @@
+<pre class='metadata'>
+Group: isowg21
+Title: Intrusive Containers
+Shortname: PNNNN
+Revision: 1
+Audience: LEWG
+Editor: Hal Finkel, Argonne National Laboratory, hfinkel@anl.gov
+Date: 2016-06-25
+</pre>
+
+<center><big><i>Intrusive Containers for the C++ Standard Library</i></big></center>
+
+Background {#bg}
+================
+
+Intrusive containers, which are non-owning containers, are a well-known technique for high-performance object management. These have been available for many years as part of <a href="http://www.boost.org/doc/libs/1_61_0/doc/html/intrusive.html">Boost.Intrusive</a>, and a subset of that library is proposed for the C++ standard library in this paper.
+
+Specifically, please read <a href="http://www.boost.org/doc/libs/1_61_0/doc/html/intrusive/intrusive_vs_nontrusive.html">Intrusive and non-intrusive containers</a> for background on intrusive containters, their advantages, and their disadvantages.
+
+Compared to Boost.Intrusive, proposed here is:
+ 1. Only the "base hook" mechanism, not the "member hook" mechanism.
+ 2. The "safe mode" features are not included (i.e. the "base hooks" are trivially constructible).
+ 3. The "auto-unlink" feature is not included.
+ 4. Node algorithms with custom NodeTraits are not included.
+ 5. Containers with custom ValueTraits are not included.
+ 6. Only intrusive container types with direct existing standard-library analogs (i.e. list, forward_list, set, multiset, unordered_set, and unordered_multiset) are included.
+ 7. The container interface is not as rich: only those interfaces analagous to those on existing containers are included. Many more, however, can be marked as noexcept.
+
+Examples {#exam}
+================
+
+<span id="exam_fl">1.) Example of using an <code highlight="c++">intrusive_forward_list</code>.</span>
+
+<pre highlight="c++">
+...
+#include &lt;intrusive_forward_list&gt;
+
+class Thing : public std::intrusive_forward_list_element&lt;&gt; {
+  int i;
+
+public:
+  Thing(int i) : i(i) {}
+  int order() { return i; } const;
+};
+
+...
+
+std::vector<Thing> Things;
+for (int i = 0; i < 10; ++i)
+  Things.push_back(Thing(i));
+
+std::intrusive_forward_list<Thing> ThingList;
+for (auto &T : Things)
+  ThingList.push_front(T);
+
+for (auto &T : ThingList)
+  std::cout << T.order() << "\n";
+</pre>
+
+<span id="exam_rl">2.) Example of using a recursive <code highlight="c++">intrusive_list</code>.</span>
+
+<pre highlight="c++">
+...
+#include &lt;intrusive_list&gt;
+
+class Recursive : public std::intrusive_list_element&lt;&gt; {
+public:
+  std::intrusive_list&lt;Recursive&gt; children; 
+};
+
+...
+
+Recursive r1, r2;
+std::intrusive_list&lt;Recursive&gt; RecursiveList;
+RecursiveList.insert(RecursiveList.begin(), r1);
+
+auto &amp;ChildRecursiveList = RecursiveList.begin()-&gt;children;
+ChildRecursiveList.insert(ChildRecursiveList.begin(), r2);
+
+std::cout &lt;&lt; RecursiveList.size() &lt;&lt; "\n";
+std::cout &lt;&lt; r1.children.size() &lt;&lt; "\n";
+std::cout &lt;&lt; r2.children.size() &lt;&lt; "\n";
+
+RecursiveList.clear();
+r1.clear();
+</pre>
+
+<span id="exam_mm">3.) Example of using multiple containers for the same objects simultaneously.</span>
+
+<pre highlight="c++">
+...
+#include &lt;intrusive_multiset&gt;
+#include &lt;intrusive_unordered_set&gt;
+
+...
+
+class name_tag;
+class age_tag;
+
+class Person : public std::intrusive_multiset_element&lt;age_tag&gt;,
+               public std::intrusive_unordered_set&lt;name_tag&gt; {
+  std::string name;
+  int age;
+
+public:
+  Person(const std::string &amp;n, int a) : name(n), age(a) {}
+
+  int Age() { return age; } const;
+
+  friend std::size_t hashName(const Person &amp;P) {
+    return std::hash(P.name);
+  }
+
+  friend bool isNameEqual(const Person &amp;P1, const Person &amp;P2) {
+    return P1.name == P2.name;
+  }
+
+  friend bool isAgeLessThan(const Person &amp;P1, const Person &amp;P2) {
+    return P1.age &lt; P2.age;
+  }
+};
+
+...
+
+Person John("John", 34), Bob("Bob", 22);
+typedef std::intrusive_multiset&lt;Person, age_tag, isAgeLessThan&gt; PeopleByAgeTy;
+PeopleByAgeTy PeopleByAge;
+std::intrusive_unordered_set&lt;Person, name_tag, hashName, isNameEqual&gt; PeopleByName;
+
+PeopleByAge.insert(John); PeopleByAge.insert(Bob);
+PeopleByName.insert(John); PeopleByName.insert(Bob);
+
+...
+
+std::size_t countPeers(const std::string &amp;Name) {
+  auto I = PeopleByName.find(Name);
+  if (I == PeopleByName.end())
+    return 0;
+
+  // An important aspect of intrusive containers is that getting an iterator
+  // from an object reference is a constant-time operation.
+  Person &amp;P = *I;
+  PeopleByAgeTy::iterator J = P;
+
+  std::size_t Count = 0;
+  for (auto K = ++J; K != PeopleByAge.end() &amp;&amp; K-&gt;Age() == P.Age();
+       ++K) { ++Count; }
+  for (auto K = J; K-&gt;Age() == P.Age(); --K) {
+    ++Count;
+    if (K == PeopleByAge.begin())
+      break;
+  }
+
+  return Count;
+}
+
+</pre>
+
+Intrusive containers {#general}
+=================================
+
+The intrusive containers proposed here correspond to existing standard-library containers. Each intrusive container's member functions are equivalent to the corresponding container functions, except that:
+<ul>
+<li>None of them allocate memory, and correspondingly, more of them are adorned with noexcept (except for the unordered containers, for which the allocator might throw, and for the associative containers, for which the comparison object might throw).
+<li>Serveral functions take parameters by reference, instead of by const reference.
+<li>Functions taking InputIterator parameters modify the objects made available by those parameters.
+</ul>
+
+Intrusive forward_list {#forward_list}
+=================================
+
+Header &lt;intrusive_forward_list&gt; synopsis
+
+<pre highlight="c++">
+namespace std {
+  struct default_intrusive_tag;
+
+  template &lt;class Tag = default_intrusive_tag&gt;
+  class intrusive_forward_list_element {
+    // implementation defined.
+  };
+
+  template &lt;class T, class Tag = default_intrusive_tag&gt;
+  class intrusive_forward_list {
+  public:
+    <i>// types:</i>
+    typedef value_type&amp; reference;
+    typedef const value_type&amp; const_reference;
+    typedef <i>implementation-defined</i> iterator;
+    typedef <i>implementation-defined</i> const_iterator;
+    typedef <i>implementation-defined</i> size_type;
+    typedef <i>implementation-defined</i> difference_type;
+    typedef T value_type;
+
+    <i>// construct/copy/destroy:</i>
+    intrusive_forward_list() noexcept;
+    template &lt;class InputIterator&gt;
+      intrusive_forward_list(InputIterator first, InputIterator last);
+    intrusive_forward_list(intrusive_forward_list&amp;&amp; x) noexcept;
+    ~intrusive_forward_list() noexcept;
+    intrusive_forward_list&amp; operator=(intrusive_forward_list&amp;&amp; x) noexcept;
+    template &lt;class InputIterator&gt;
+      void assign(InputIterator first, InputIterator last);
+
+    <i>// iterators:</i>
+    iterator before_begin() noexcept;
+    const_iterator before_begin() const noexcept;
+    iterator begin() noexcept;
+    const_iterator begin() const noexcept;
+    iterator end() noexcept;
+    const_iterator end() const noexcept;
+
+    const_iterator cbegin() const noexcept;
+    const_iterator cbefore_begin() const noexcept;
+    const_iterator cend() const noexcept;
+
+    <i>// capacity:</i>
+    bool empty() const noexcept;
+    size_type size() const noexcept;
+    size_type max_size() const noexcept;
+
+    <i>// element access:</i>
+    reference front() noexcept;
+    const_reference front() const noexcept;
+
+    <i>// modifiers:</i>
+    void push_front(T&amp; x) noexcept;
+    void pop_front() noexcept;
+    iterator insert_after(const_iterator position, T&amp; x) noexcept;
+    template &lt;class InputIterator&gt;
+      iterator insert_after(const_iterator position, InputIterator first, InputIterator last);
+    iterator erase_after(const_iterator position) noexcept;
+    iterator erase_after(const_iterator position, const_iterator last) noexcept;
+    void swap(intrusive_forward_list&) noexcept;
+    void clear() noexcept;
+
+    <i>// list operations:</i>
+    void splice_after(const_iterator position, intrusive_forward_list&amp; x) noexcept;
+    void splice_after(const_iterator position, intrusive_forward_list&amp;&amp; x) noexcept;
+    void splice_after(const_iterator position, intrusive_forward_list&amp; x,
+                      const_iterator i) noexcept;
+    void splice_after(const_iterator position, intrusive_forward_list&amp;&amp; x,
+                      const_iterator i) noexcept;
+    void splice_after(const_iterator position, intrusive_forward_list&amp; x,
+                      const_iterator first, const_iterator last) noexcept;
+    void splice_after(const_iterator position, intrusive_forward_list&amp;&amp; x,
+                      const_iterator first, const_iterator last) noexcept;
+
+    void remove(const T&amp; value);
+    template &lt;class Predicate&gt; void remove_if(Predicate pred);
+
+    void unique();
+    template &lt;class BinaryPredicate&gt;
+    void unique(BinaryPredicate binary_pred);
+
+    void merge(list&amp; x);
+    void merge(list&amp;&amp; x);
+    template &lt;class Compare&gt; void merge(list&amp; x, Compare comp);
+    template &lt;class Compare&gt; void merge(list&amp;&amp; x, Compare comp);
+
+    void sort();
+    template &lt;class Compare&gt; void sort(Compare comp);
+
+    void reverse() noexcept;
+  };
+
+  <i>// Comparison operators</i>
+  template &lt;class T, class Tag&gt;
+  bool operator==(const intrusive_forward_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_forward_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator&lt; (const intrusive_forward_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_forward_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator!=(const intrusive_forward_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_forward_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator&gt; (const intrusive_forward_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_forward_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator&gt;=(const intrusive_forward_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_forward_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator&lt;=(const intrusive_forward_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_forward_list&lt;T,Tag&gt;&amp; y);
+
+  <i>// Specialized algorithms:</i>
+  template &lt;class T, class Tag&gt;
+  void swap(intrusive_forward_list&lt;T,Tag&gt;&amp; x,
+            intrusive_forward_list&lt;T,Tag&gt;&amp; y);  
+}
+</pre>
+
+Note that the Boost.Intrusive name for this type is slist instead of forward_list.
+
+Intrusive list {#list}
+=================================
+
+Header &lt;intrusive_list&gt; synopsis
+
+<pre highlight="c++">
+namespace std {
+  struct default_intrusive_tag;
+
+  template &lt;class Tag = default_intrusive_tag&gt;
+  class intrusive_list_element {
+    // implementation defined.
+  };
+
+  template &lt;class T, class Tag = default_intrusive_tag&gt;
+  class intrusive_list {
+  public:
+    <i>// types:</i>
+    typedef value_type&amp; reference;
+    typedef const value_type&amp; const_reference;
+    typedef <i>implementation-defined</i> iterator;
+    typedef <i>implementation-defined</i> const_iterator;
+    typedef <i>implementation-defined</i> size_type;
+    typedef <i>implementation-defined</i> difference_type;
+    typedef T value_type;
+    typedef std::reverse_iterator&lt;iterator&gt; reverse_iterator;
+    typedef std::reverse_iterator&lt;const_iterator&gt; const_reverse_iterator;
+
+    <i>// construct/copy/destroy:</i>
+    intrusive_list() noexcept;
+    template &lt;class InputIterator&gt;
+      intrusive_list(InputIterator first, InputIterator last);
+    intrusive_list(intrusive_list&amp;&amp; x) noexcept;
+    ~intrusive_list() noexcept;
+    intrusive_list&amp; operator=(intrusive_list&amp;&amp; x) noexcept;
+    template &lt;class InputIterator&gt;
+      void assign(InputIterator first, InputIterator last);
+
+    <i>// iterators:</i>
+    iterator begin() noexcept;
+    const_iterator begin() const noexcept;
+    iterator end() noexcept;
+    const_iterator end() const noexcept;
+
+    reverse_iterator rbegin() noexcept;
+    const_reverse_iterator rbegin() const noexcept;
+    reverse_iterator rend() noexcept;
+    const_reverse_iterator rend() const noexcept;
+
+    const_iterator cbegin() const noexcept;
+    const_iterator cend() const noexcept;
+    const_reverse_iterator crbegin() const noexcept;
+    const_reverse_iterator crend() const noexcept;
+
+    <i>// capacity:</i>
+    bool empty() const noexcept;
+    size_type size() const noexcept;
+    size_type max_size() const noexcept;
+
+    <i>// element access:</i>
+    reference front() noexcept;
+    const_reference front() const noexcept;
+    reference back() noexcept;
+    const_reference back() const noexcept;
+
+    <i>// modifiers:</i>
+    void push_front(T&amp; x) noexcept;
+    void push_back(T&amp; x) noexcept;
+    void pop_back() noexcept;
+    iterator insert(const_iterator position, T&amp; x) noexcept;
+    template &lt;class InputIterator&gt;
+      iterator insert(const_iterator position, InputIterator first, InputIterator last);
+    iterator erase(const_iterator position) noexcept;
+    iterator erase(const_iterator position, const_iterator last) noexcept;
+    void swap(intrusive_list&) noexcept;
+    void clear() noexcept;
+
+    <i>// list operations:</i>
+    void splice(const_iterator position, intrusive_list&amp; x) noexcept;
+    void splice(const_iterator position, intrusive_list&amp;&amp; x) noexcept;
+    void splice(const_iterator position, intrusive_list&amp; x, const_iterator i) noexcept;
+    void splice(const_iterator position, intrusive_list&amp;&amp; x, const_iterator i) noexcept;
+    void splice(const_iterator position, intrusive_list&amp; x,
+                const_iterator first, const_iterator last) noexcept;
+    void splice(const_iterator position, intrusive_list&amp;&amp; x,
+                const_iterator first, const_iterator last) noexcept;
+
+    void remove(const T&amp; value);
+    template &lt;class Predicate&gt; void remove_if(Predicate pred);
+
+    void unique();
+    template &lt;class BinaryPredicate&gt;
+    void unique(BinaryPredicate binary_pred);
+
+    void merge(list&amp; x);
+    void merge(list&amp;&amp; x);
+    template &lt;class Compare&gt; void merge(list&amp; x, Compare comp);
+    template &lt;class Compare&gt; void merge(list&amp;&amp; x, Compare comp);
+
+    void sort();
+    template &lt;class Compare&gt; void sort(Compare comp);
+
+    void reverse() noexcept;
+  };
+
+  <i>// Comparison operators</i>
+  template &lt;class T, class Tag&gt;
+  bool operator==(const intrusive_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator&lt; (const intrusive_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator!=(const intrusive_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator&gt; (const intrusive_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator&gt;=(const intrusive_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_list&lt;T,Tag&gt;&amp; y);
+  template &lt;class T, class Tag&gt;
+  bool operator&lt;=(const intrusive_list&lt;T,Tag&gt;&amp; x,
+                  const intrusive_list&lt;T,Tag&gt;&amp; y);
+
+  <i>// Specialized algorithms:</i>
+  template &lt;class T, class Tag&gt;
+  void swap(intrusive_forward_list&lt;T,Tag&gt;&amp; x,
+            intrusive_forward_list&lt;T,Tag&gt;&amp; y);  
+}
+</pre>
+
+Intrusive set {#set}
+=================================
+
+Header &lt;intrusive_set&gt; synopsis
+
+<pre highlight="c++">
+namespace std {
+  struct default_intrusive_tag;
+
+  template &lt;class Tag = default_intrusive_tag&gt;
+  class intrusive_set_element {
+    // implementation defined.
+  };
+
+  template &lt;class T, class Tag = default_intrusive_tag,
+            class Compare = less&lt;T&gt;&gt;
+  class intrusive_set {
+  public:
+    <i>// types:</i>
+    typedef T key_type;
+    typedef T value_type;
+    typedef Compare key_compare;
+    typedef Compare value_compare;
+    typedef value_type&amp; reference;
+    typedef const value_type&amp; const_reference;
+    typedef <i>implementation-defined</i> iterator;
+    typedef <i>implementation-defined</i> const_iterator;
+    typedef <i>implementation-defined</i> size_type;
+    typedef <i>implementation-defined</i> difference_type;
+    typedef std::reverse_iterator&lt;iterator&gt; reverse_iterator;
+    typedef std::reverse_iterator&lt;const_iterator&gt; const_reverse_iterator;
+
+    <i>// construct/copy/destroy:</i>
+    intrusive_set() : intrusive_set(Compare()) { }
+    explicit intrusive_set(const Compare& comp);
+    template &lt;class InputIterator&gt;
+      intrusive_set(InputIterator first, InputIterator last,
+                    const Compare&amp; comp = Compare());
+    intrusive_set(intrusive_set&amp;&amp; x) noexcept;
+    ~intrusive_set() noexcept;
+    intrusive_set&amp; operator=(intrusive_set&amp;&amp; x) noexcept;
+    template &lt;class InputIterator&gt;
+      void assign(InputIterator first, InputIterator last);
+
+    <i>// iterators:</i>
+    iterator begin() noexcept;
+    const_iterator begin() const noexcept;
+    iterator end() noexcept;
+    const_iterator end() const noexcept;
+
+    reverse_iterator rbegin() noexcept;
+    const_reverse_iterator rbegin() const noexcept;
+    reverse_iterator rend() noexcept;
+    const_reverse_iterator rend() const noexcept;
+
+    const_iterator cbegin() const noexcept;
+    const_iterator cend() const noexcept;
+    const_reverse_iterator crbegin() const noexcept;
+    const_reverse_iterator crend() const noexcept;
+
+    <i>// capacity:</i>
+    bool empty() const noexcept;
+    size_type size() const noexcept;
+    size_type max_size() const noexcept;
+
+    <i>// modifiers:</i>
+    pair&lt;iterator,bool&gt; insert(value_type&amp; x);
+    iterator insert(const_iterator position, value_type&amp; x);
+    template &lt;class InputIterator&gt;
+      iterator insert(const_iterator position, InputIterator first, InputIterator last);
+    iterator erase(const_iterator position) noexcept;
+    size_type erase(key_type&amp; x);
+    iterator erase(const_iterator position, const_iterator last) noexcept;
+    void swap(intrusive_set&) noexcept;
+    void clear() noexcept;
+
+    <i>// observers:</i>
+    key_compare key_comp() const;
+    value_compare value_comp() const;
+
+    <i>// set operations:</i>
+    iterator find(const key_type&amp; x);
+    const_iterator find(const key_type&amp; x) const;
+    template &lt;class K&gt; iterator find(const K&amp; x);
+    template &lt;class K&gt; const_iterator find(const K&amp; x) const;
+    
+    size_type count(const key_type&amp; x) const;
+    template &lt;class K&gt; size_type count(const K&amp; x) const;
+    
+    iterator lower_bound(const key_type&amp; x);
+    const_iterator lower_bound(const key_type&amp; x) const;
+    template &lt;class K&gt; iterator lower_bound(const K&amp; x);
+    template &lt;class K&gt; const_iterator lower_bound(const K&amp; x) const;
+    
+    iterator upper_bound(const key_type&amp; x);
+    const_iterator upper_bound(const key_type&amp; x) const;
+    template &lt;class K&gt; iterator upper_bound(const K&amp; x);
+    template &lt;class K&gt; const_iterator upper_bound(const K&amp; x) const;
+    
+    pair&lt;iterator,iterator&gt; equal_range(const key_type&amp; x);
+    pair&lt;const_iterator,const_iterator&gt; equal_range(const key_type&amp; x) const;
+    template &lt;class K&gt; pair&lt;iterator, iterator&gt; equal_range(const K&amp; x);
+    template &lt;class K&gt; pair&lt;const_iterator, const_iterator&gt; equal_range(const K&amp; x) const;
+  };
+
+  <i>// Comparison operators</i>
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator==(const intrusive_set&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_set&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator&lt; (const intrusive_set&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_set&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator!=(const intrusive_set&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_set&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator&gt; (const intrusive_set&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_set&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator&gt;=(const intrusive_set&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_set&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator&lt;=(const intrusive_set&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_set&lt;T,Tag,Compare&gt;&amp; y);
+
+  <i>// Specialized algorithms:</i>
+  template &lt;class T, class Tag, class Compare&gt;
+  void swap(intrusive_forward_set&lt;T,Tag,Compare&gt;&amp; x,
+            intrusive_forward_set&lt;T,Tag,Compare&gt;&amp; y);  
+}
+</pre>
+
+Intrusive multiset {#multiset}
+=================================
+
+Header &lt;intrusive_multiset&gt; synopsis
+
+<pre highlight="c++">
+namespace std {
+  struct default_intrusive_tag;
+
+  template &lt;class Tag = default_intrusive_tag&gt;
+  class intrusive_multiset_element {
+    // implementation defined.
+  };
+
+  template &lt;class T, class Tag = default_intrusive_tag,
+            class Compare = less&lt;T&gt;&gt;
+  class intrusive_multiset {
+  public:
+    <i>// types:</i>
+    typedef T key_type;
+    typedef T value_type;
+    typedef Compare key_compare;
+    typedef Compare value_compare;
+    typedef value_type&amp; reference;
+    typedef const value_type&amp; const_reference;
+    typedef <i>implementation-defined</i> iterator;
+    typedef <i>implementation-defined</i> const_iterator;
+    typedef <i>implementation-defined</i> size_type;
+    typedef <i>implementation-defined</i> difference_type;
+    typedef std::reverse_iterator&lt;iterator&gt; reverse_iterator;
+    typedef std::reverse_iterator&lt;const_iterator&gt; const_reverse_iterator;
+
+    <i>// construct/copy/destroy:</i>
+    intrusive_multiset() : intrusive_multiset(Compare()) { }
+    explicit intrusive_multiset(const Compare& comp);
+    template &lt;class InputIterator&gt;
+      intrusive_multiset(InputIterator first, InputIterator last,
+                    const Compare&amp; comp = Compare());
+    intrusive_multiset(intrusive_multiset&amp;&amp; x) noexcept;
+    ~intrusive_multiset() noexcept;
+    intrusive_multiset&amp; operator=(intrusive_multiset&amp;&amp; x) noexcept;
+    template &lt;class InputIterator&gt;
+      void assign(InputIterator first, InputIterator last);
+
+    <i>// iterators:</i>
+    iterator begin() noexcept;
+    const_iterator begin() const noexcept;
+    iterator end() noexcept;
+    const_iterator end() const noexcept;
+
+    reverse_iterator rbegin() noexcept;
+    const_reverse_iterator rbegin() const noexcept;
+    reverse_iterator rend() noexcept;
+    const_reverse_iterator rend() const noexcept;
+
+    const_iterator cbegin() const noexcept;
+    const_iterator cend() const noexcept;
+    const_reverse_iterator crbegin() const noexcept;
+    const_reverse_iterator crend() const noexcept;
+
+    <i>// capacity:</i>
+    bool empty() const noexcept;
+    size_type size() const noexcept;
+    size_type max_size() const noexcept;
+
+    <i>// modifiers:</i>
+    pair&lt;iterator,bool&gt; insert(value_type&amp; x);
+    iterator insert(const_iterator position, value_type&amp; x);
+    template &lt;class InputIterator&gt;
+      iterator insert(const_iterator position, InputIterator first, InputIterator last);
+    iterator erase(const_iterator position) noexcept;
+    size_type erase(key_type&amp; x);
+    iterator erase(const_iterator position, const_iterator last) noexcept;
+    void swap(intrusive_multiset&) noexcept;
+    void clear() noexcept;
+
+    <i>// observers:</i>
+    key_compare key_comp() const;
+    value_compare value_comp() const;
+
+    <i>// set operations:</i>
+    iterator find(const key_type&amp; x);
+    const_iterator find(const key_type&amp; x) const;
+    template &lt;class K&gt; iterator find(const K&amp; x);
+    template &lt;class K&gt; const_iterator find(const K&amp; x) const;
+    
+    size_type count(const key_type&amp; x) const;
+    template &lt;class K&gt; size_type count(const K&amp; x) const;
+    
+    iterator lower_bound(const key_type&amp; x);
+    const_iterator lower_bound(const key_type&amp; x) const;
+    template &lt;class K&gt; iterator lower_bound(const K&amp; x);
+    template &lt;class K&gt; const_iterator lower_bound(const K&amp; x) const;
+    
+    iterator upper_bound(const key_type&amp; x);
+    const_iterator upper_bound(const key_type&amp; x) const;
+    template &lt;class K&gt; iterator upper_bound(const K&amp; x);
+    template &lt;class K&gt; const_iterator upper_bound(const K&amp; x) const;
+    
+    pair&lt;iterator,iterator&gt; equal_range(const key_type&amp; x);
+    pair&lt;const_iterator,const_iterator&gt; equal_range(const key_type&amp; x) const;
+    template &lt;class K&gt; pair&lt;iterator, iterator&gt; equal_range(const K&amp; x);
+    template &lt;class K&gt; pair&lt;const_iterator, const_iterator&gt; equal_range(const K&amp; x) const;
+  };
+
+  <i>// Comparison operators</i>
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator==(const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator&lt; (const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator!=(const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator&gt; (const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator&gt;=(const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; y);
+  template &lt;class T, class Tag, class Compare&gt;
+  bool operator&lt;=(const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; x,
+                  const intrusive_multiset&lt;T,Tag,Compare&gt;&amp; y);
+
+  <i>// Specialized algorithms:</i>
+  template &lt;class T, class Tag, class Compare&gt;
+  void swap(intrusive_forward_multiset&lt;T,Tag,Compare&gt;&amp; x,
+            intrusive_forward_multiset&lt;T,Tag,Compare&gt;&amp; y);  
+}
+</pre>
+
+Intrusive unordered_set {#unordered_set}
+=================================
+
+Header &lt;intrusive_unordered_set&gt; synopsis
+
+<pre highlight="c++">
+namespace std {
+  struct default_intrusive_tag;
+
+  template &lt;class Tag = default_intrusive_tag&gt;
+  class intrusive_unordered_set_element {
+    // implementation defined.
+  };
+
+  template &lt;class T, class Tag = default_intrusive_tag,
+            class Hash = hash&lt;T&gt;,
+            class Pred = std::equal_to&lt;T&gt;,
+            class Allocator = std::allocator&lt;T&gt;&gt;
+  class intrusive_unordered_set {
+  public:
+    <i>// types:</i>
+    typedef T key_type;
+    typedef T value_type;
+    typedef Hash hasher;
+    typedef Pred key_equal;
+
+    typedef Allocator allocator_type;
+
+    typedef value_type&amp; reference;
+    typedef const value_type&amp; const_reference;
+
+    typedef <i>implementation-defined</i> iterator;
+    typedef <i>implementation-defined</i> const_iterator;
+    typedef <i>implementation-defined</i> local_iterator;
+    typedef <i>implementation-defined</i> const_local_iterator;
+
+    typedef <i>implementation-defined</i> size_type;
+    typedef <i>implementation-defined</i> difference_type;
+
+    <i>// construct/copy/destroy:</i>
+    intrusive_unordered_set();
+    explicit intrusive_unordered_set(const hasher&amp; hf = hasher(),
+                                     const key_equal&amp; eql = key_equal(),
+                                     const allocator_type&amp; a = allocator_type());
+    template &lt;class InputIterator&gt;
+      intrusive_unordered_set(InputIterator first, InputIterator last,
+                    size_type n = <i>implementation defined</i>,
+                    const hasher&amp; hf = hasher(),
+                    const key_equal&amp; eql = key_equal(),
+                    const allocator_type&amp; a = allocator_type());
+    intrusive_unordered_set(intrusive_unordered_set&amp;&amp; x) noexcept;
+    explicit intrusive_unordered_set(const Allocator&);
+    intrusive_unordered_set(intrusive_unordered_set&amp;&amp; x, const Allocator&);
+    intrusive_unordered_set(size_type n, const allocator_type&amp; a)
+      : intrusive_unordered_set(n, hasher(), key_equal(), a) { }
+    intrusive_unordered_set(size_type n, const hasher&amp; hf, const allocator_type&amp; a)
+      : intrusive_unordered_set(n, hf, key_equal(), a) { }
+    template &lt;class InputIterator&gt;
+    intrusive_unordered_set(InputIterator f, InputIterator l, size_type n,
+                            const allocator_type&amp; a)
+      : intrusive_unordered_set(f, l, n, hasher(), key_equal(), a) { }
+    template &lt;class InputIterator&gt;
+    intrusive_unordered_set(InputIterator f, InputIterator l, size_type n, const hasher&amp; hf,
+                  const allocator_type&amp; a)
+      : intrusive_unordered_set(f, l, n, hf, key_equal(), a) { }
+    ~intrusive_unordered_set() noexcept;
+    intrusive_unordered_set&amp; operator=(intrusive_unordered_set&amp;&amp; x) noexcept;
+    template &lt;class InputIterator&gt;
+      void assign(InputIterator first, InputIterator last);
+
+    <i>// iterators:</i>
+    iterator begin() noexcept;
+    const_iterator begin() const noexcept;
+    iterator end() noexcept;
+    const_iterator end() const noexcept;
+
+    const_iterator cbegin() const noexcept;
+    const_iterator cend() const noexcept;
+
+    <i>// capacity:</i>
+    bool empty() const noexcept;
+    size_type size() const noexcept;
+    size_type max_size() const noexcept;
+
+    <i>// modifiers:</i>
+    pair&lt;iterator,bool&gt; insert(value_type&amp; x);
+    iterator insert(const_iterator hint, value_type&amp; x);
+    template &lt;class InputIterator&gt;
+      iterator insert(InputIterator first, InputIterator last);
+    iterator erase(const_iterator position) noexcept;
+    size_type erase(key_type&amp; x);
+    iterator erase(const_iterator position, const_iterator last) noexcept;
+    void swap(intrusive_unordered_set&) noexcept;
+    void clear() noexcept;
+
+    <i>// observers:</i>
+    hasher hash_function() const;
+    key_equal key_eq() const;
+
+    <i>// lookup:</i>
+    iterator find(const key_type&amp; x);
+    const_iterator find(const key_type&amp; x) const;
+    
+    size_type count(const key_type&amp; x) const;
+    template &lt;class K&gt; size_type count(const K&amp; x) const;
+    
+    pair&lt;iterator,iterator&gt; equal_range(const key_type&amp; x);
+    pair&lt;const_iterator,const_iterator&gt; equal_range(const key_type&amp; x) const;
+
+    <i>// bucket interface:</i>
+    size_type bucket_count() const noexcept;
+    size_type max_bucket_count() const noexcept;
+    size_type bucket_size(size_type n) const;
+    size_type bucket(const key_type&amp; k) const;
+    local_iterator begin(size_type n);
+    const_local_iterator begin(size_type n) const;
+    local_iterator end(size_type n);
+    const_local_iterator end(size_type n) const;
+    const_local_iterator cbegin(size_type n) const;
+    const_local_iterator cend(size_type n) const;
+
+    <i>// hash policy:</i>
+    float load_factor() const noexcept;
+    float max_load_factor() const noexcept;
+    void max_load_factor(float z);
+    void rehash(size_type n);
+    void reserve(size_type n);
+  };
+
+  <i>// Comparison operators</i>
+  template &lt;class T, class Tag, class Hash, class Pred, class Alloc&gt;
+  bool operator==(const intrusive_unordered_set&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; x,
+                  const intrusive_unordered_set&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; y);
+  template &lt;class T, class Tag, class Hash, class Pred, class Alloc&gt;
+  bool operator!=(const intrusive_unordered_set&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; x,
+                  const intrusive_unordered_set&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; y);
+
+  <i>// Specialized algorithms:</i>
+  template &lt;class T, class Tag, class Hash, class Pred, class Alloc&gt;
+  void swap(intrusive_forward_unordered_set&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; x,
+            intrusive_forward_unordered_set&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; y);  
+}
+</pre>
+
+Note that this interface differs from that provided by Boost.Intrusive because
+Boost.Intrusive uses only user-provided memory for the hash-bucket array,
+whereas this class takes an allocator and manages that memory itself.
+
+Intrusive unordered_multiset {#unordered_multiset}
+=================================
+
+Header &lt;intrusive_unordered_multiset&gt; synopsis
+
+<pre highlight="c++">
+namespace std {
+  struct default_intrusive_tag;
+
+  template &lt;class Tag = default_intrusive_tag&gt;
+  class intrusive_unordered_multiset_element {
+    // implementation defined.
+  };
+
+  template &lt;class T, class Tag = default_intrusive_tag,
+            class Hash = hash&lt;T&gt;,
+            class Pred = std::equal_to&lt;T&gt;,
+            class Allocator = std::allocator&lt;T&gt;&gt;
+  class intrusive_unordered_multiset {
+  public:
+    <i>// types:</i>
+    typedef T key_type;
+    typedef T value_type;
+    typedef Hash hasher;
+    typedef Pred key_equal;
+
+    typedef Allocator allocator_type;
+
+    typedef value_type&amp; reference;
+    typedef const value_type&amp; const_reference;
+
+    typedef <i>implementation-defined</i> iterator;
+    typedef <i>implementation-defined</i> const_iterator;
+    typedef <i>implementation-defined</i> local_iterator;
+    typedef <i>implementation-defined</i> const_local_iterator;
+
+    typedef <i>implementation-defined</i> size_type;
+    typedef <i>implementation-defined</i> difference_type;
+
+    <i>// construct/copy/destroy:</i>
+    intrusive_unordered_multiset();
+    explicit intrusive_unordered_multiset(const hasher&amp; hf = hasher(),
+                                     const key_equal&amp; eql = key_equal(),
+                                     const allocator_type&amp; a = allocator_type());
+    template &lt;class InputIterator&gt;
+      intrusive_unordered_multiset(InputIterator first, InputIterator last,
+                    size_type n = <i>implementation defined</i>,
+                    const hasher&amp; hf = hasher(),
+                    const key_equal&amp; eql = key_equal(),
+                    const allocator_type&amp; a = allocator_type());
+    intrusive_unordered_multiset(intrusive_unordered_multiset&amp;&amp; x) noexcept;
+    explicit intrusive_unordered_multiset(const Allocator&);
+    intrusive_unordered_multiset(intrusive_unordered_multiset&amp;&amp; x, const Allocator&);
+    intrusive_unordered_multiset(size_type n, const allocator_type&amp; a)
+      : intrusive_unordered_multiset(n, hasher(), key_equal(), a) { }
+    intrusive_unordered_multiset(size_type n, const hasher&amp; hf, const allocator_type&amp; a)
+      : intrusive_unordered_multiset(n, hf, key_equal(), a) { }
+    template &lt;class InputIterator&gt;
+    intrusive_unordered_multiset(InputIterator f, InputIterator l, size_type n,
+                            const allocator_type&amp; a)
+      : intrusive_unordered_multiset(f, l, n, hasher(), key_equal(), a) { }
+    template &lt;class InputIterator&gt;
+    intrusive_unordered_multiset(InputIterator f, InputIterator l, size_type n,
+                  const hasher&amp; hf,
+                  const allocator_type&amp; a)
+      : intrusive_unordered_multiset(f, l, n, hf, key_equal(), a) { }
+    ~intrusive_unordered_multiset() noexcept;
+    intrusive_unordered_multiset&amp; operator=(intrusive_unordered_multiset&amp;&amp; x) noexcept;
+    template &lt;class InputIterator&gt;
+      void assign(InputIterator first, InputIterator last);
+
+    <i>// iterators:</i>
+    iterator begin() noexcept;
+    const_iterator begin() const noexcept;
+    iterator end() noexcept;
+    const_iterator end() const noexcept;
+
+    const_iterator cbegin() const noexcept;
+    const_iterator cend() const noexcept;
+
+    <i>// capacity:</i>
+    bool empty() const noexcept;
+    size_type size() const noexcept;
+    size_type max_size() const noexcept;
+
+    <i>// modifiers:</i>
+    pair&lt;iterator,bool&gt; insert(value_type&amp; x);
+    iterator insert(const_iterator hint, value_type&amp; x);
+    template &lt;class InputIterator&gt;
+      iterator insert(InputIterator first, InputIterator last);
+    iterator erase(const_iterator position) noexcept;
+    size_type erase(key_type&amp; x);
+    iterator erase(const_iterator position, const_iterator last) noexcept;
+    void swap(intrusive_unordered_multiset&) noexcept;
+    void clear() noexcept;
+
+    <i>// observers:</i>
+    hasher hash_function() const;
+    key_equal key_eq() const;
+
+    <i>// lookup:</i>
+    iterator find(const key_type&amp; x);
+    const_iterator find(const key_type&amp; x) const;
+    
+    size_type count(const key_type&amp; x) const;
+    template &lt;class K&gt; size_type count(const K&amp; x) const;
+    
+    pair&lt;iterator,iterator&gt; equal_range(const key_type&amp; x);
+    pair&lt;const_iterator,const_iterator&gt; equal_range(const key_type&amp; x) const;
+
+    <i>// bucket interface:</i>
+    size_type bucket_count() const noexcept;
+    size_type max_bucket_count() const noexcept;
+    size_type bucket_size(size_type n) const;
+    size_type bucket(const key_type&amp; k) const;
+    local_iterator begin(size_type n);
+    const_local_iterator begin(size_type n) const;
+    local_iterator end(size_type n);
+    const_local_iterator end(size_type n) const;
+    const_local_iterator cbegin(size_type n) const;
+    const_local_iterator cend(size_type n) const;
+
+    <i>// hash policy:</i>
+    float load_factor() const noexcept;
+    float max_load_factor() const noexcept;
+    void max_load_factor(float z);
+    void rehash(size_type n);
+    void reserve(size_type n);
+  };
+
+  <i>// Comparison operators</i>
+  template &lt;class T, class Tag, class Hash, class Pred, class Alloc&gt;
+  bool operator==(const intrusive_unordered_multiset&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; x,
+                  const intrusive_unordered_multiset&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; y);
+  template &lt;class T, class Tag, class Hash, class Pred, class Alloc&gt;
+  bool operator!=(const intrusive_unordered_multiset&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; x,
+                  const intrusive_unordered_multiset&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; y);
+
+  <i>// Specialized algorithms:</i>
+  template &lt;class T, class Tag, class Hash, class Pred, class Alloc&gt;
+  void swap(intrusive_forward_unordered_multiset&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; x,
+            intrusive_forward_unordered_multiset&lt;T,Tag,Hash,Pred,Alloc&gt;&amp; y);  
+}
+</pre>
+
+Note that this interface differs from that provided by Boost.Intrusive because
+Boost.Intrusive uses only user-provided memory for the hash-bucket array,
+whereas this class takes an allocator and manages that memory itself.
+
+Acknowledgments {#acko}
+=======================
+
+The author thanks Ion Gaztanaga, Olaf Krzikalla, and other contributors to the Boost.Intrusive library. The author thanks Michael Wong and other SG14 participants for repeatidly stressing the desire for this feature. The author thanks Marshall Clow, Ville Voutilainen, and Jonathan Wakely for providing feedback.
+
