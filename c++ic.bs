@@ -166,6 +166,8 @@ The intrusive containers proposed here correspond to existing standard-library c
 <li>Functions taking InputIterator parameters modify the objects made available by those parameters.
 </ul>
 
+Each intrusive container's iterators have the same requirements as the corresponding container's interators, with the additional requirement that the iterator type can be constructed from the object type in constant time.
+
 Intrusive forward_list {#forward_list}
 =================================
 
