@@ -1502,7 +1502,7 @@ Possible extra rowspan handling
    <h2 class="heading settled" data-level="3" id="general"><span class="secno">3. </span><span class="content">Intrusive containers</span><a class="self-link" href="#general"></a></h2>
    <p>The intrusive containers proposed here correspond to existing standard-library containers. Each intrusive container’s member functions are equivalent to the corresponding container functions, except that:</p>
    <ul>
-    <li>None of them allocate memory, and correspondingly, more of them are adorned with noexcept (except for the unordered containers, for which the allocator might throw, and for the associative containers, for which the comparison object might throw). 
+    <li>None of them allocate memory, and correspondingly, more of them are adorned with noexcept (except for the unordered containers, for which the allocator might throw, and for the associative containers, where the comparison object might throw). 
     <li>Serveral functions take parameters by reference, instead of by const reference. 
     <li>Functions taking InputIterator parameters modify the objects made available by those parameters. 
    </ul>
