@@ -1,7 +1,7 @@
 <pre class='metadata'>
 Group: isowg21
 Title: Intrusive Containers
-Shortname: PNNNN
+Shortname: P0406
 Revision: 1
 Audience: LEWG
 Editor: Hal Finkel, Argonne National Laboratory, hfinkel@anl.gov
