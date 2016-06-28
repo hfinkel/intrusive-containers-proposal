@@ -45,16 +45,16 @@ public:
 
 ...
 
-std::vector<Thing> Things;
-for (int i = 0; i < 10; ++i)
+std::vector&lt;Thing&gt; Things;
+for (int i = 0; i &lt; 10; ++i)
   Things.push_back(Thing(i));
 
-std::intrusive_forward_list<Thing> ThingList;
-for (auto &T : Things)
+std::intrusive_forward_list&lt;Thing&gt; ThingList;
+for (auto &amp;T : Things)
   ThingList.push_front(T);
 
-for (auto &T : ThingList)
-  std::cout << T.order() << "\n";
+for (auto &amp;T : ThingList)
+  std::cout &lt;&lt; T.order() &lt;&lt; "\n";
 </pre>
 
 <span id="exam_rl">2.) Example of using a recursive <code highlight="c++">intrusive_list</code>.</span>

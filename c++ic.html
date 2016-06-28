@@ -1337,6 +1337,7 @@ Possible extra rowspan handling
     <dl>
      <dd><span class="metadata-key">Project: </span><span>ISO/IEC JTC1/SC22/WG21</span>
      <dd><span class="metadata-key">Audience: </span><span>LEWG</span>
+     <dd><span class="metadata-key">Repository: </span><a href="https://github.com/hfinkel/intrusive-containers-proposal" rel="repository">hfinkel/intrusive-containers-proposal</a>
      <dd><span class="metadata-key">Author: </span><span class="editor p-author h-card vcard"><a class="p-name fn u-email email" href="mailto:hfinkel@anl.gov">Hal Finkel</a> (<span class="p-org org">Argonne National Laboratory</span>)</span>
     </dl>
    </div>
@@ -1383,7 +1384,7 @@ Possible extra rowspan handling
    </ol>
    <h2 class="heading settled" data-level="2" id="exam"><span class="secno">2. </span><span class="content">Examples</span><a class="self-link" href="#exam"></a></h2>
    <p><span id="exam_fl">1.) Example of using an <code class="highlight"><span></span><span class="n">intrusive_forward_list</span> </code>.</span></p>
-<pre class="highlight"><span class="p">...</span>
+<pre class="highlight"><span></span><span class="p">...</span>
 <span class="cp">#include</span> <span class="cpf">&lt;intrusive_forward_list></span><span class="cp"></span>
 
 <span class="k">class</span> <span class="nc">Thing</span> <span class="o">:</span> <span class="k">public</span> <span class="n">std</span><span class="o">::</span><span class="n">intrusive_forward_list_element</span><span class="o">&lt;></span> <span class="p">{</span>
@@ -1396,17 +1397,17 @@ Possible extra rowspan handling
 
 <span class="p">...</span>
 
-<span class="n">std</span><span class="o">::</span><span class="n">vector</span><thing> <span class="n">Things</span><span class="p">;</span>
+<span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Thing</span><span class="o">></span> <span class="n">Things</span><span class="p">;</span>
 <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
   <span class="n">Things</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">Thing</span><span class="p">(</span><span class="n">i</span><span class="p">));</span>
 
-<span class="n">std</span><span class="o">::</span><span class="n">intrusive_forward_list</span><thing> <span class="n">ThingList</span><span class="p">;</span>
+<span class="n">std</span><span class="o">::</span><span class="n">intrusive_forward_list</span><span class="o">&lt;</span><span class="n">Thing</span><span class="o">></span> <span class="n">ThingList</span><span class="p">;</span>
 <span class="k">for</span> <span class="p">(</span><span class="k">auto</span> <span class="o">&amp;</span><span class="nl">T</span> <span class="p">:</span> <span class="n">Things</span><span class="p">)</span>
   <span class="n">ThingList</span><span class="p">.</span><span class="n">push_front</span><span class="p">(</span><span class="n">T</span><span class="p">);</span>
 
 <span class="k">for</span> <span class="p">(</span><span class="k">auto</span> <span class="o">&amp;</span><span class="nl">T</span> <span class="p">:</span> <span class="n">ThingList</span><span class="p">)</span>
   <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="n">T</span><span class="p">.</span><span class="n">order</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">;</span>
-</thing></thing></pre>
+</pre>
    <p><span id="exam_rl">2.) Example of using a recursive <code class="highlight"><span></span><span class="n">intrusive_list</span> </code>.</span></p>
 <pre class="highlight"><span></span><span class="p">...</span>
 <span class="cp">#include</span> <span class="cpf">&lt;intrusive_list></span><span class="cp"></span>
