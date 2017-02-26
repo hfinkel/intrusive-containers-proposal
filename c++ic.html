@@ -1332,7 +1332,7 @@ Possible extra rowspan handling
             }</style>
  <body class="h-entry">
   <div class="head">
-   <h1 class="p-name no-ref" id="title">P0406-r1: Intrusive Containers</h1>
+   <h1 class="p-name no-ref" id="title">P0406-r2: Intrusive Containers</h1>
    <div data-fill-with="spec-metadata">
     <dl>
      <dd><span class="metadata-key">Project: </span><span>ISO/IEC JTC1/SC22/WG21</span>
@@ -1382,6 +1382,13 @@ Possible extra rowspan handling
     <li data-md="">
      <p>The container interface is not as rich: only those interfaces analagous to those on existing containers are included. Many more, however, can be marked as noexcept.</p>
    </ol>
+   <p>Several other libraries have implementations of intrusive containers, for example:</p>
+   <ul>
+    <li data-md="">
+     <p><a href="https://github.com/electronicarts/EASTL">EASTL"</a>: include/EASTL/intrusive_{hash_map,hash_set,list}.h</p>
+    <li data-md="">
+     <p><a href="https://github.com/etlcpp/etl">etl</a>: etl/src/intrusive_{forward_list,list}.h</p>
+   </ul>
    <h2 class="heading settled" data-level="2" id="exam"><span class="secno">2. </span><span class="content">Examples</span><a class="self-link" href="#exam"></a></h2>
    <p><span id="exam_fl">1.) Example of using an <code class="highlight"><span></span><span class="n">intrusive_forward_list</span> </code>.</span></p>
 <pre class="highlight"><span></span><span class="p">...</span>
@@ -2151,7 +2158,19 @@ Possible extra rowspan handling
 </pre>
    <p>Note that this interface differs from that provided by Boost.Intrusive because
 Boost.Intrusive uses only user-provided memory for the hash-bucket array,
-whereas this class takes an allocator and manages that memory itself.</p>
+whereas this class takes an allocator and manages that memory itself.
+Boost.Intrusive’s unordered containers take a pointer to the data used for the
+bucket array as a constructor parameter (at least in general; there is a
+bucket_traits abstraction layer).</p>
+   <p>Boost.Intrusive’s unordered containers don’t rehash to maintain balance, but
+the user can request explicit rehashing by providing a new bucket array.</p>
+   <p>The EASTL intrusive_hash_{map,set} classes are templated on the bucket count (a
+size_t-typed template parameter), and the container itself contains an array of
+(bucketCount+1) node pointers (along with the current element count).</p>
+   <p>Boost.Intrusive’s unordered container’s hooks have an explicit store_hash
+option (to store the hash value to make rehashing more efficient). The proposed
+interface leaves it unspecified whether or not the hooks have a cache of the
+hash value.</p>
    <h2 class="heading settled" data-level="9" id="unordered_multiset"><span class="secno">9. </span><span class="content">Intrusive unordered_multiset</span><a class="self-link" href="#unordered_multiset"></a></h2>
    <p>Header &lt;intrusive_unordered_multiset> synopsis</p>
 <pre class="highlight"><span class="k">namespace</span> <span class="n">std</span> <span class="p">{</span>

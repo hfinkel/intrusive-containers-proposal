@@ -2,10 +2,11 @@
 Group: isowg21
 Title: Intrusive Containers
 Shortname: P0406
-Revision: 1
+Revision: 2
 Audience: LEWG
 Editor: Hal Finkel, Argonne National Laboratory, hfinkel@anl.gov
-Date: 2016-06-25
+Date: 2017-02-26
+Repository: https://github.com/hfinkel/intrusive-containers-proposal
 </pre>
 
 <center><big><i>Intrusive Containers for the C++ Standard Library</i></big></center>
@@ -25,6 +26,10 @@ Compared to Boost.Intrusive, proposed here is:
  5. Containers with custom ValueTraits are not included.
  6. Only intrusive container types with direct existing standard-library analogs (i.e. list, forward_list, set, multiset, unordered_set, and unordered_multiset) are included.
  7. The container interface is not as rich: only those interfaces analagous to those on existing containers are included. Many more, however, can be marked as noexcept.
+
+Several other libraries have implementations of intrusive containers, for example:
+ * <a href="https://github.com/electronicarts/EASTL">EASTL"</a>: include/EASTL/intrusive_{hash_map,hash_set,list}.h
+ * <a href="https://github.com/etlcpp/etl">etl</a>: etl/src/intrusive_{forward_list,list}.h
 
 Examples {#exam}
 ================
@@ -838,6 +843,21 @@ namespace std {
 Note that this interface differs from that provided by Boost.Intrusive because
 Boost.Intrusive uses only user-provided memory for the hash-bucket array,
 whereas this class takes an allocator and manages that memory itself.
+Boost.Intrusive's unordered containers take a pointer to the data used for the
+bucket array as a constructor parameter (at least in general; there is a
+bucket_traits abstraction layer).
+
+Boost.Intrusive's unordered containers don't rehash to maintain balance, but
+the user can request explicit rehashing by providing a new bucket array.
+
+The EASTL intrusive_hash_{map,set} classes are templated on the bucket count (a
+size_t-typed template parameter), and the container itself contains an array of
+(bucketCount+1) node pointers (along with the current element count).
+
+Boost.Intrusive's unordered container's hooks have an explicit store_hash
+option (to store the hash value to make rehashing more efficient). The proposed
+interface leaves it unspecified whether or not the hooks have a cache of the
+hash value.
 
 Intrusive unordered_multiset {#unordered_multiset}
 =================================
