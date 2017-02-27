@@ -30,6 +30,7 @@ Compared to Boost.Intrusive, proposed here is:
 Several other libraries have implementations of intrusive containers, for example:
  * <a href="https://github.com/electronicarts/EASTL">EASTL"</a>: include/EASTL/intrusive_{hash_map,hash_set,list}.h
  * <a href="https://github.com/etlcpp/etl">etl</a>: etl/src/intrusive_{forward_list,list}.h
+ * <a href="http://www.cs.wustl.edu/~schmidt/ACE.html">ACE</a>: ace/Intrusive_List.h
 
 Examples {#exam}
 ================
